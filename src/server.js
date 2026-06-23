@@ -61,13 +61,16 @@ app.use('/uploads', express.static(uploadsDir));
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:3000', 'https://zimchinasymposium.com'],
-  credentials: true
+  origin: ['http://localhost:3000', 'https://www.zimchinasymposium.com', 'https://zimchinasymposium.com'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  credentials: true,
+  optionsSuccessStatus: 200
 }));
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 20,
   message: { error: 'Too many registration attempts. Please try again later.' }
 });
 
