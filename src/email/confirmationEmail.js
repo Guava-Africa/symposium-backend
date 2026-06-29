@@ -1,9 +1,9 @@
 // Logo URLs - Use absolute URLs that work
 // Since your images are returning 404, let's use the correct paths
 // Your images are in the public folder, so they should be accessible at:
-const ZIMCHINA_LOGO = 'https://zimchinasymposium.vercel.app/Zimchina.png';
-const CHAMBER_LOGO = 'https://zimchinasymposium.vercel.app/chamberlogo.png';
-const AFRICAPACITI_LOGO = 'https://zimchinasymposium.vercel.app/africapaciti.png';
+const ZIMCHINA_LOGO = 'https://zimchinasymposium.com/Zimchina.png';
+const CHAMBER_LOGO = 'https://zimchinasymposium.com/chamberlogo.png';
+const AFRICAPACITI_LOGO = 'https://zimchinasymposium.com/africapaciti.png';
 
 // Base email wrapper
 const getEmailWrapper = (content) => {
@@ -158,7 +158,7 @@ const getEmailContent = (data) => `
   <tr>
     <td style="background: #f8f9fa; padding: 25px; text-align: center;" class="section-padding">
       <div class="footer-text" style="color: #6b7280; font-size: 13px; margin: 0 0 5px 0;">© 2026 Zimbabwe-China Investment Symposium. All rights reserved.</div>
-      <div class="footer-text" style="color: #6b7280; font-size: 13px; margin: 0;">Questions? <a href="mailto:registration@zimchinasymposium.com" style="color: #d4af37; text-decoration: none;">registration@zimchinasymposium.com</a></div>
+      <div class="footer-text" style="color: #6b7280; font-size: 13px; margin: 0;">Questions? <a href="mailto:info@zimchinasymposium.com" style="color: #d4af37; text-decoration: none;">info@zimchinasymposium.com</a></div>
     </td>
   </tr>
 `;

@@ -1,8 +1,5 @@
 const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel, AlignmentType, BorderStyle, ImageRun } = require('docx');
 
-/**
- * Field display names mapping
- */
 const fieldLabels = {
   regNumber: 'Registration #',
   title: 'Title',
@@ -10,14 +7,11 @@ const fieldLabels = {
   email: 'Email',
   phone: 'Phone',
   nationality: 'Nationality',
-  nationalId: 'National ID',
+  jobTitle: 'Job Title',
   organization: 'Organization',
   createdAt: 'Registration Date'
 };
 
-/**
- * Create a Word document from registration data with images
- */
 async function createWordDocumentWithImages({ registrations, fields, title, eventDate, venue }) {
   // Build rows with images
   const rows = [];
@@ -42,7 +36,6 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
     })
   );
   
-  // Add "Photo" column header
   headerCells.push(
     new TableCell({
       children: [
@@ -65,6 +58,9 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
   rows.push(new TableRow({ children: headerCells }));
 
   // Data rows with images
+  let imageCount = 0;
+  let noImageCount = 0;
+  
   for (const reg of registrations) {
     const rowCells = fields.map(field => {
       let value = reg[field] !== undefined && reg[field] !== null ? String(reg[field]) : '';
@@ -75,6 +71,11 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
         } catch {
           // keep as is
         }
+      }
+      
+      // Truncate long text to avoid breaking table layout
+      if (value.length > 100) {
+        value = value.substring(0, 97) + '...';
       }
       
       return new TableCell({
@@ -95,8 +96,9 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
 
     // Add photo cell
     let photoParagraph;
-    if (reg.imageBuffer) {
+    if (reg.imageBuffer && reg.imageExists) {
       try {
+        // Resize image to fit in cell (max 100x100)
         const imageRun = new ImageRun({
           data: reg.imageBuffer,
           transformation: {
@@ -108,18 +110,21 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
           children: [imageRun],
           alignment: AlignmentType.CENTER
         });
+        imageCount++;
       } catch (imgError) {
         console.error('Error adding image:', imgError);
         photoParagraph = new Paragraph({
           text: '⚠️ Error loading image',
           alignment: AlignmentType.CENTER
         });
+        noImageCount++;
       }
     } else {
       photoParagraph = new Paragraph({
         text: '📷 No photo',
         alignment: AlignmentType.CENTER
       });
+      noImageCount++;
     }
 
     rowCells.push(
@@ -137,6 +142,8 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
     rows.push(new TableRow({ children: rowCells }));
   }
 
+  console.log(`📊 Word document: ${imageCount} images, ${noImageCount} no image`);
+
   // Create the final table
   const table = new Table({ 
     rows: rows,
@@ -151,7 +158,6 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
     sections: [{
       properties: {},
       children: [
-        // Title
         new Paragraph({
           text: title,
           heading: HeadingLevel.TITLE,
@@ -159,7 +165,6 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
           spacing: { after: 200 }
         }),
         
-        // Subtitle
         new Paragraph({
           children: [
             new TextRun({
@@ -171,10 +176,8 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
           spacing: { after: 400 }
         }),
 
-        // Table
         table,
 
-        // Footer
         new Paragraph({
           children: [
             new TextRun({
@@ -194,5 +197,4 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
   return buffer;
 }
 
-// Export the function
-module.exports = createWordDocumentWithImages ;
+module.exports = { createWordDocumentWithImages };

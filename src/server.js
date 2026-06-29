@@ -17,7 +17,6 @@ const prisma = new PrismaClient();
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const PORT = process.env.PORT || 5000;
-const MAX_REGISTRATIONS = 200;
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, '../uploads');
@@ -83,15 +82,11 @@ app.get('/api/health', (req, res) => {
 app.get('/api/registrations/count', async (req, res) => {
   try {
     const count = await prisma.registration.count();
-    const remaining = Math.max(0, MAX_REGISTRATIONS - count);
     
     res.json({
       success: true,
       data: {
         total: count,
-        max: MAX_REGISTRATIONS,
-        remaining: remaining,
-        isFull: remaining === 0
       }
     });
   } catch (error) {
@@ -100,15 +95,15 @@ app.get('/api/registrations/count', async (req, res) => {
   }
 });
 
-// ===== REGISTRATION ENDPOINT =====
+// ===== REGISTRATION ENDPOINT - NO BLOCKING =====
 app.post('/api/register', limiter, upload.single('profileImage'), async (req, res) => {
   try {
-    console.log('📝 Registration request received');
+    // console.log('📝 Registration request received');
     
     const { title, fullName, email, phone, nationality, jobTitle, organization } = req.body;
     
-    console.log('📦 Data:', { title, fullName, email, phone, nationality, jobTitle, organization });
-    console.log('📎 File:', req.file ? req.file.filename : 'No file');
+    // console.log('📦 Data:', { title, fullName, email, phone, nationality, jobTitle, organization });
+    // console.log('📎 File:', req.file ? req.file.filename : 'No file');
     
     // Validate required fields
     const missingFields = [];
@@ -145,15 +140,6 @@ app.post('/api/register', limiter, upload.single('profileImage'), async (req, re
       });
     }
 
-    // Check registration limit
-    const currentCount = await prisma.registration.count();
-    if (currentCount >= MAX_REGISTRATIONS) {
-      return res.status(409).json({ 
-        success: false, 
-        error: `Registration is full. Maximum ${MAX_REGISTRATIONS} attendees.` 
-      });
-    }
-
     // Store file path if uploaded
     let profilePhotoPath = null;
     if (req.file) {
@@ -161,7 +147,7 @@ app.post('/api/register', limiter, upload.single('profileImage'), async (req, re
       console.log('✅ Image saved to:', profilePhotoPath);
     }
 
-    // Create registration
+    // Create registration - no blocking, everyone can register
     const registration = await prisma.registration.create({
       data: {
         title,
@@ -175,33 +161,29 @@ app.post('/api/register', limiter, upload.single('profileImage'), async (req, re
       }
     });
 
-    const remaining = MAX_REGISTRATIONS - (currentCount + 1);
     console.log('✅ Registration saved, ID:', registration.id, 'Number:', registration.regNumber);
-    console.log(`📊 ${remaining} spots remaining`);
 
-    // Send confirmation email
+    // Send confirmation email (no await - fire and forget)
     if (process.env.RESEND_API_KEY) {
-      try {
-        const emailHtml = getConfirmationEmail({
-          id: registration.id,
-          regNumber: registration.regNumber,
-          title,
-          jobTitle,
-          fullName,
-          organization,
-          nationality
-        });
-        
-        await resend.emails.send({
-          from: 'Zimbabwe-China Symposium <info@zimchinasymposium.com>',
-          to: [email],
-          subject: 'Registration Confirmed for Zimbabwe-China Investment Symposium 2026',
-          html: emailHtml
-        });
-        console.log('✅ Email sent to:', email);
-      } catch (emailError) {
-        console.error('❌ Email error:', emailError.message);
-      }
+      const emailHtml = getConfirmationEmail({
+        id: registration.id,
+        regNumber: registration.regNumber,
+        title,
+        jobTitle,
+        fullName,
+        organization,
+        nationality
+      });
+      
+      // Fire and forget - don't await
+      resend.emails.send({
+        from: 'Zimbabwe-China Symposium <info@zimchinasymposium.com>',
+        to: [email],
+        subject: 'Registration Confirmed for Zimbabwe-China Investment Symposium 2026',
+        html: emailHtml
+      })
+      .then(() => console.log('✅ Email sent to:', email))
+      .catch((emailError) => console.error('❌ Email error:', emailError.message));
     }
 
     res.status(201).json({ 
@@ -210,8 +192,6 @@ app.post('/api/register', limiter, upload.single('profileImage'), async (req, re
       data: { 
         regNumber: registration.regNumber,
         email: registration.email,
-        remainingSpots: remaining,
-        isFull: remaining === 0
       }
     });
 
@@ -323,6 +303,7 @@ app.get('/api/export/word/all/regist', async (req, res) => {
       };
     }
 
+    console.log('📊 Fetching registrations...');
     const registrations = await prisma.registration.findMany({
       orderBy: { regNumber: 'asc' },
       take: limit || undefined,
@@ -333,31 +314,62 @@ app.get('/api/export/word/all/regist', async (req, res) => {
       return res.status(404).json({ success: false, error: 'No registrations found' });
     }
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const registrationsWithImages = await Promise.all(registrations.map(async (reg) => {
+    console.log(`📸 Processing ${registrations.length} registrations with images...`);
+    
+    // Process images one by one with proper error handling and retries
+    const registrationsWithImages = [];
+    
+    for (const reg of registrations) {
       let imageBuffer = null;
+      let imageLoaded = false;
       
       if (reg.profilePhoto) {
         try {
           const imagePath = path.join(__dirname, '..', reg.profilePhoto);
+          
+          // Check if file exists
           if (fs.existsSync(imagePath)) {
-            imageBuffer = fs.readFileSync(imagePath);
-            console.log(`📸 Loaded image for ${reg.fullName}: ${reg.profilePhoto}`);
+            // Read file with proper error handling
+            try {
+              imageBuffer = fs.readFileSync(imagePath);
+              imageLoaded = true;
+              console.log(`✅ Image loaded for ${reg.fullName}: ${reg.profilePhoto} (${imageBuffer.length} bytes)`);
+            } catch (readError) {
+              console.error(`❌ Failed to read image for ${reg.fullName}:`, readError.message);
+              // Try alternative path if needed
+              const altPath = path.join(__dirname, '../uploads', path.basename(reg.profilePhoto));
+              if (fs.existsSync(altPath)) {
+                try {
+                  imageBuffer = fs.readFileSync(altPath);
+                  imageLoaded = true;
+                  console.log(`✅ Image loaded from alt path for ${reg.fullName}`);
+                } catch (altError) {
+                  console.error(`❌ Alt path also failed for ${reg.fullName}:`, altError.message);
+                }
+              }
+            }
           } else {
-            console.log(`⚠️ Image not found for ${reg.fullName}: ${reg.profilePhoto}`);
+            console.log(`⚠️ Image file not found for ${reg.fullName}: ${reg.profilePhoto}`);
           }
         } catch (imgError) {
-          console.error(`❌ Error loading image for ${reg.fullName}:`, imgError.message);
+          console.error(`❌ Error processing image for ${reg.fullName}:`, imgError.message);
         }
       }
       
-      return {
+      registrationsWithImages.push({
         ...reg,
         imageBuffer: imageBuffer,
-        imageExists: !!imageBuffer
-      };
-    }));
+        imageExists: imageLoaded,
+        imageError: !imageLoaded && reg.profilePhoto ? true : false
+      });
+    }
+    
+    // Count how many images loaded successfully
+    const loadedCount = registrationsWithImages.filter(r => r.imageExists).length;
+    console.log(`📊 Images loaded: ${loadedCount}/${registrations.length}`);
 
+    // Generate Word document with images
+    console.log('📄 Generating Word document...');
     const docBuffer = await createWordDocumentWithImages({
       registrations: registrationsWithImages,
       fields: Object.keys(selectFields).filter(f => f !== 'profilePhoto'),
@@ -366,12 +378,14 @@ app.get('/api/export/word/all/regist', async (req, res) => {
       venue: 'Golden Conifer Conference Centre, Harare'
     });
 
+    console.log(`✅ Word document generated (${docBuffer.length} bytes)`);
+
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', `attachment; filename=registrations_${new Date().toISOString().split('T')[0]}.docx`);
     res.send(docBuffer);
 
   } catch (error) {
-    console.error('Error exporting Word document:', error);
+    console.error('❌ Error exporting Word document:', error);
     res.status(500).json({ success: false, error: 'Error generating document: ' + error.message });
   }
 });
@@ -387,7 +401,6 @@ app.listen(PORT, () => {
 ║  📧 Email: ${process.env.RESEND_API_KEY ? '✅ Ready' : '❌ Not configured'}
 ║  🗄️  Database: ✅ MySQL Connected
 ║  📁 Uploads: ${uploadsDir}
-║  📊 Max Registrations: ${MAX_REGISTRATIONS}
 ╚══════════════════════════════════════════════════════════╝
   `);
 });

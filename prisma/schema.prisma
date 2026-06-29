@@ -9,17 +9,17 @@ datasource db {
 
 model Registration {
   id           String   @id @default(cuid())
-  regNumber    Int      @default(autoincrement()) @map("reg_number") @unique
+  regNumber    Int      @unique @default(autoincrement()) @map("reg_number")
   title        String
   fullName     String
   email        String   @unique
   phone        String
   nationality  String
-  jobTitle   String
   organization String
   profilePhoto String?  @map("profile_photo") @db.LongText
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
+  jobTitle     String
 
   @@map("registrations")
 }
