@@ -8,7 +8,7 @@ const fs = require('fs');
 const { PrismaClient } = require('@prisma/client');
 const { Resend } = require('resend');
 const { getConfirmationEmail } = require('./email/confirmationEmail');
-const createWordDocumentWithImages  = require('./utils/wordGenerator');
+const {createWordDocumentWithImages}  = require('./utils/wordGenerator');
 
 dotenv.config();
 
