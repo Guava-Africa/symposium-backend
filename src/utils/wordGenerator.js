@@ -1,5 +1,4 @@
 const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel, AlignmentType, BorderStyle, ImageRun } = require('docx');
-const sharp = require('sharp');
 
 const fieldLabels = {
   regNumber: 'Registration #',
@@ -13,24 +12,11 @@ const fieldLabels = {
   createdAt: 'Registration Date'
 };
 
-// Helper to fix image orientation only - no resizing
-async function fixOrientation(imageBuffer) {
-  try {
-    const metadata = await sharp(imageBuffer).metadata();
-    if (metadata.orientation && metadata.orientation > 1) {
-      return await sharp(imageBuffer).rotate().toBuffer();
-    }
-    return imageBuffer;
-  } catch (error) {
-    console.error('Error fixing orientation:', error);
-    return imageBuffer;
-  }
-}
-
 async function createWordDocumentWithImages({ registrations, fields, title, eventDate, venue }) {
+  // Build rows with images
   const rows = [];
 
-  // Header
+  // Header row
   const headerCells = fields.map(field => 
     new TableCell({
       children: [
@@ -71,8 +57,9 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
   
   rows.push(new TableRow({ children: headerCells }));
 
-  // Data rows
+  // Data rows with images
   let imageCount = 0;
+  let noImageCount = 0;
   
   for (const reg of registrations) {
     const rowCells = fields.map(field => {
@@ -86,6 +73,7 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
         }
       }
       
+      // Truncate long text to avoid breaking table layout
       if (value.length > 100) {
         value = value.substring(0, 97) + '...';
       }
@@ -106,13 +94,13 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
       });
     });
 
-    // Photo cell - fix orientation only
+    // Add photo cell
     let photoParagraph;
     if (reg.imageBuffer && reg.imageExists) {
       try {
-        const fixedBuffer = await fixOrientation(reg.imageBuffer);
+        // Resize image to fit in cell (max 100x100)
         const imageRun = new ImageRun({
-          data: fixedBuffer,
+          data: reg.imageBuffer,
           transformation: {
             width: 100,
             height: 100
@@ -124,17 +112,19 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
         });
         imageCount++;
       } catch (imgError) {
-        console.error(`Error loading image for ${reg.fullName}:`, imgError.message);
+        console.error('Error adding image:', imgError);
         photoParagraph = new Paragraph({
-          text: '⚠️ Error',
+          text: '⚠️ Error loading image',
           alignment: AlignmentType.CENTER
         });
+        noImageCount++;
       }
     } else {
       photoParagraph = new Paragraph({
         text: '📷 No photo',
         alignment: AlignmentType.CENTER
       });
+      noImageCount++;
     }
 
     rowCells.push(
@@ -145,10 +135,6 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
           bottom: { style: BorderStyle.SINGLE, size: 1 },
           left: { style: BorderStyle.SINGLE, size: 1 },
           right: { style: BorderStyle.SINGLE, size: 1 }
-        },
-        width: {
-          size: 15,
-          type: 'pct'
         }
       })
     );
@@ -156,8 +142,9 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
     rows.push(new TableRow({ children: rowCells }));
   }
 
-  console.log(`📊 Word document: ${imageCount} images loaded`);
+  console.log(`📊 Word document: ${imageCount} images, ${noImageCount} no image`);
 
+  // Create the final table
   const table = new Table({ 
     rows: rows,
     width: {
@@ -166,34 +153,23 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
     }
   });
 
+  // Build document
   const doc = new Document({
     sections: [{
-      properties: {
-        page: {
-          margin: {
-            top: 720,
-            bottom: 720,
-            left: 720,
-            right: 720
-          }
-        }
-      },
+      properties: {},
       children: [
         new Paragraph({
           text: title,
           heading: HeadingLevel.TITLE,
           alignment: AlignmentType.CENTER,
-          spacing: { after: 200 },
-          bold: true,
-          size: 28
+          spacing: { after: 200 }
         }),
         
         new Paragraph({
           children: [
             new TextRun({
               text: `Date: ${eventDate}  |  Venue: ${venue}  |  Total Registrations: ${registrations.length}`,
-              size: 24,
-              color: '666666'
+              size: 24
             })
           ],
           alignment: AlignmentType.CENTER,
@@ -207,7 +183,7 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
             new TextRun({
               text: `\nGenerated on: ${new Date().toLocaleString()}`,
               size: 20,
-              color: '888888'
+              color: '666666'
             })
           ],
           alignment: AlignmentType.RIGHT,

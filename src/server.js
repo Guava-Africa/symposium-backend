@@ -323,33 +323,38 @@ app.get('/api/export/word/all/regist', async (req, res) => {
       let imageBuffer = null;
       let imageLoaded = false;
       
-      // In server.js, update the image loading section
-if (reg.profilePhoto) {
-  try {
-    // Try multiple possible paths
-    const possiblePaths = [
-      path.join(__dirname, '..', reg.profilePhoto),
-      path.join(__dirname, '../uploads', path.basename(reg.profilePhoto)),
-      reg.profilePhoto
-    ];
-    
-    let imageLoaded = false;
-    for (const imagePath of possiblePaths) {
-      if (fs.existsSync(imagePath)) {
-        imageBuffer = fs.readFileSync(imagePath);
-        imageLoaded = true;
-        console.log(`✅ Image loaded for ${reg.fullName}: ${imagePath}`);
-        break;
+      if (reg.profilePhoto) {
+        try {
+          const imagePath = path.join(__dirname, '..', reg.profilePhoto);
+          
+          // Check if file exists
+          if (fs.existsSync(imagePath)) {
+            // Read file with proper error handling
+            try {
+              imageBuffer = fs.readFileSync(imagePath);
+              imageLoaded = true;
+              console.log(`✅ Image loaded for ${reg.fullName}: ${reg.profilePhoto} (${imageBuffer.length} bytes)`);
+            } catch (readError) {
+              console.error(`❌ Failed to read image for ${reg.fullName}:`, readError.message);
+              // Try alternative path if needed
+              const altPath = path.join(__dirname, '../uploads', path.basename(reg.profilePhoto));
+              if (fs.existsSync(altPath)) {
+                try {
+                  imageBuffer = fs.readFileSync(altPath);
+                  imageLoaded = true;
+                  console.log(`✅ Image loaded from alt path for ${reg.fullName}`);
+                } catch (altError) {
+                  console.error(`❌ Alt path also failed for ${reg.fullName}:`, altError.message);
+                }
+              }
+            }
+          } else {
+            console.log(`⚠️ Image file not found for ${reg.fullName}: ${reg.profilePhoto}`);
+          }
+        } catch (imgError) {
+          console.error(`❌ Error processing image for ${reg.fullName}:`, imgError.message);
+        }
       }
-    }
-    
-    if (!imageLoaded) {
-      console.log(`⚠️ Image not found for ${reg.fullName}: ${reg.profilePhoto}`);
-    }
-  } catch (imgError) {
-    console.error(`❌ Error loading image for ${reg.fullName}:`, imgError.message);
-  }
-}
       
       registrationsWithImages.push({
         ...reg,
