@@ -1,4 +1,5 @@
 const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel, AlignmentType, BorderStyle, ImageRun } = require('docx');
+const sharp = require('sharp');
 
 const fieldLabels = {
   regNumber: 'Registration #',
@@ -12,11 +13,24 @@ const fieldLabels = {
   createdAt: 'Registration Date'
 };
 
+// Helper to fix image orientation only - no resizing
+async function fixOrientation(imageBuffer) {
+  try {
+    const metadata = await sharp(imageBuffer).metadata();
+    if (metadata.orientation && metadata.orientation > 1) {
+      return await sharp(imageBuffer).rotate().toBuffer();
+    }
+    return imageBuffer;
+  } catch (error) {
+    console.error('Error fixing orientation:', error);
+    return imageBuffer;
+  }
+}
+
 async function createWordDocumentWithImages({ registrations, fields, title, eventDate, venue }) {
-  // Build rows with images
   const rows = [];
 
-  // Header row
+  // Header
   const headerCells = fields.map(field => 
     new TableCell({
       children: [
@@ -36,7 +50,6 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
     })
   );
   
-  // Add Photo header
   headerCells.push(
     new TableCell({
       children: [
@@ -58,9 +71,8 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
   
   rows.push(new TableRow({ children: headerCells }));
 
-  // Data rows with images
+  // Data rows
   let imageCount = 0;
-  let noImageCount = 0;
   
   for (const reg of registrations) {
     const rowCells = fields.map(field => {
@@ -74,7 +86,6 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
         }
       }
       
-      // Truncate long text to avoid breaking table layout
       if (value.length > 100) {
         value = value.substring(0, 97) + '...';
       }
@@ -95,15 +106,16 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
       });
     });
 
-    // Add photo cell - NO resizing, NO rotation, just the original image
+    // Photo cell - fix orientation only
     let photoParagraph;
     if (reg.imageBuffer && reg.imageExists) {
       try {
+        const fixedBuffer = await fixOrientation(reg.imageBuffer);
         const imageRun = new ImageRun({
-          data: reg.imageBuffer,
+          data: fixedBuffer,
           transformation: {
-            width: 150,
-            height: 150
+            width: 100,
+            height: 100
           }
         });
         photoParagraph = new Paragraph({
@@ -112,19 +124,17 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
         });
         imageCount++;
       } catch (imgError) {
-        console.error(`❌ Error adding image for ${reg.fullName}:`, imgError.message);
+        console.error(`Error loading image for ${reg.fullName}:`, imgError.message);
         photoParagraph = new Paragraph({
-          text: '⚠️ Error loading image',
+          text: '⚠️ Error',
           alignment: AlignmentType.CENTER
         });
-        noImageCount++;
       }
     } else {
       photoParagraph = new Paragraph({
         text: '📷 No photo',
         alignment: AlignmentType.CENTER
       });
-      noImageCount++;
     }
 
     rowCells.push(
@@ -146,9 +156,8 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
     rows.push(new TableRow({ children: rowCells }));
   }
 
-  console.log(`📊 Word document: ${imageCount} images, ${noImageCount} no image`);
+  console.log(`📊 Word document: ${imageCount} images loaded`);
 
-  // Create the final table
   const table = new Table({ 
     rows: rows,
     width: {
@@ -157,7 +166,6 @@ async function createWordDocumentWithImages({ registrations, fields, title, even
     }
   });
 
-  // Build document
   const doc = new Document({
     sections: [{
       properties: {
