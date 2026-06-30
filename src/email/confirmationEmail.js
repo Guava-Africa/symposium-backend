@@ -97,7 +97,7 @@ const getEmailContent = (data) => `
         Thank you for registering for the <strong>Zimbabwe-China Investment Symposium</strong>! 
         
         <br><br>
-        The symposium has reached its maximum capacity of <strong>200 attendees</strong> and you have been placed on the waiting list.
+        The symposium has reached the maximum capacity of delegates and you have been placed on the waiting list.
         <br><br>
         We will contact you if a spot becomes available or if you are able to attend.
       </div>
