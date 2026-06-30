@@ -94,7 +94,12 @@ const getEmailContent = (data) => `
       </div>
       
       <div class="body-text" style="margin: 0 0 25px 0; line-height: 1.7; color: #333333; font-size: 17px;">
-        Thank you for registering for the <strong>Zimbabwe-China Investment Symposium</strong>! We are thrilled to have you join us for this historic event.
+        Thank you for registering for the <strong>Zimbabwe-China Investment Symposium</strong>! 
+        
+        <br><br>
+        The symposium has reached its maximum capacity of <strong>200 attendees</strong> and you have been placed on the waiting list.
+        <br><br>
+        We will contact you if a spot becomes available or if you are able to attend.
       </div>
       
       <!-- Details Card -->
